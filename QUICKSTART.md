@@ -9,56 +9,33 @@ Get up and running in 5 minutes!
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Clone and Set Up (one command)
 
 ```bash
 git clone https://github.com/saig214/finance_tracker.git
 cd finance_tracker
+bash setup.sh && source .venv/bin/activate
 ```
 
-### 2. Create Virtual Environment
+This single script:
+- Finds Python 3.11+ on your system
+- Creates a virtual environment
+- Installs all dependencies
+- Copies `.env.example` to `.env`
+- Installs the pre-commit PII safety hook
+- Creates data directories
+- Runs database migrations
+- Verifies the install works
 
-**Windows:**
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
-
-**macOS/Linux:**
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install Dependencies
+### 2. Configure Your Passwords
 
 ```bash
-pip install -e .
-```
-
-**Verify installation:**
-```bash
-finance --help
-```
-
-You should see the list of available commands.
-
-### 4. Set Up Environment
-
-```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env with your actual passwords
-notepad .env  # Windows
+# Edit .env with your actual bank PDF passwords
 nano .env     # macOS/Linux
 ```
 
 **Edit these values in `.env`:**
 ```bash
-# Database (leave as-is for local SQLite)
-DATABASE_URL=sqlite:///data/db/finance.db
-
 # Add YOUR bank PDF passwords
 HDFC_CC_PASSWORD=your_actual_hdfc_password
 ICICI_CC_PASSWORD=your_actual_icici_password
@@ -66,19 +43,13 @@ ICICI_CC_PASSWORD=your_actual_icici_password
 
 **🔒 Important:** Never commit the `.env` file! It's already in `.gitignore`.
 
-### 5. Initialize Database
+### 3. Verify
 
 ```bash
-finance init-db
+finance --help
 ```
 
-**Expected output:**
-```
-✓ Created database directory: data/db
-✓ Initialized database at: data/db/finance.db
-✓ Applied migrations
-✓ Database ready!
-```
+You should see the list of available commands.
 
 ## First Import
 

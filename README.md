@@ -51,27 +51,19 @@ Unlike commercial tools that require you to upload your data to the cloud, this 
 
 ### Installation
 
-1. **Clone and Install**
+1. **Clone and Set Up**
    ```bash
    git clone https://github.com/saig214/finance_tracker.git
    cd finance_tracker
    bash setup.sh && source .venv/bin/activate
    ```
+   *This installs everything, sets up the database, and configures git hooks. See [QUICKSTART.md](QUICKSTART.md) for details.*
 
-2. **Configure Environment**
-   Create a `.env` file to store secrets (optional but recommended):
+2. **Configure Passwords** (for parsing bank PDFs)
    ```bash
-   # .env
-   DATABASE_URL=sqlite:///data/db/finance.db
-   HDFC_PDF_PASSWORD=your_password
-   ICICI_PDF_PASSWORD=your_password
+   # Edit .env with your actual bank statement passwords
+   nano .env
    ```
-
-3. **Initialize Database**
-   ```bash
-   finance init-db
-   ```
-   *This creates the database in `data/db/finance.db`.*
 
 ---
 

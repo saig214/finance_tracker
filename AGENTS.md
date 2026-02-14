@@ -113,7 +113,7 @@ tests/            # pytest test suite
 
 ## Database Schema (Quick Reference)
 
-- **`transactions`**: Central table — `id`, `amount`, `transaction_date`, `original_description`, `merchant_id` (FK), `category_id` (FK), `source_file_id` (FK), `dedup_hash` (SHA256 unique).
+- **`transactions`**: Central table — `id`, `amount`, `transaction_date`, `original_description`, `merchant_id` (FK), `category_id` (FK), `source_file_id` (FK), `dedup_hash` (used for CSV-over-PDF upgrades).
 - **`merchants`**: Canonical entities — `id`, `name`, `default_category_id`, `type` (Business/Person).
 - **`categories`**: Hierarchical — `id`, `name`, `parent_id`.
 - **`categorization_rules`**: JSON-based engine — `conditions` (JSON), `merchant_id` (target).
@@ -196,7 +196,6 @@ Example output:
 
 ### In Progress / Planned
 - Merchant type refinement (Business vs Person)
-- Advanced Splitwise reconciliation
 - Budgeting per category
 - Investment tracking
 
