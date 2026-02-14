@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Financial Dashboard</h1>
+    <div class="flex-row">
+      <label class="flex-row" style="font-size: 0.875rem;">
+        <input type="checkbox" id="excludeTransfers" checked onchange="updateCharts()">
+        Exclude Transfers
+      </label>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="dashboard-grid dashboard-summary-grid">
+    <div class="card">
+      <div class="stat-label">Total Transactions</div>
+      <div class="stat-value">{{ stats.total_count }}</div>
+      <div class="form-help">All time</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Total Expenses</div>
+      <div class="stat-value" style="color: var(--danger);" data-amount="{{ stats.total_expense }}">Loading...</div>
+      <div class="form-help">Excluding transfers</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Total Income</div>
+      <div class="stat-value" style="color: var(--success);" data-amount="{{ stats.total_income }}">Loading...</div>
+      <div class="form-help">All sources</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Net</div>
+      <div class="stat-value" style="color: {% if stats.net >= 0 %}var(--success){% else %}var(--danger){% endif %};" data-amount="{{ stats.net }}">Loading...</div>
+      <div class="form-help">Income - Expenses</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Merchants</div>
+      <div class="stat-value" style="color: var(--info);">{{ stats.merchant_count }}</div>
+      <div class="form-help">Unique</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Uncategorized</div>
+      <div class="stat-value" style="color: var(--warning);">{{ stats.uncategorized_count }}</div>
+      <div class="form-help">Need attention</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="dashboard-grid dashboard-charts-grid">
+    <div class="card">
+      <h2 class="card-title">Monthly Spending Trend</h2>
+      <div class="chart-wrapper">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">By Category</h2>
+      <div class="chart-wrapper">
+        <canvas id="categoryChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Transactions -->
+  <div class="card dashboard-recent">
+    <div class="panel-header">
+      <h2 class="card-title" style="margin: 0;">Recent Transactions</h2>
+      <a href="/transactions" class="btn btn-secondary">View All</a>
+    </div>
+
+    <div class="table-container table-container-flat">
+      <table class="transactions-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="text-right">Amount</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tx in recent_transactions %}
+          <tr class="transaction-row {% if tx.transaction_type.value == 'income' %}income-row{% elif tx.transaction_type.value == 'transfer' %}transfer-row{% else %}expense-row{% endif %}">
+            <td class="date-cell">{{ tx.transaction_date.strftime('%d/%m/%Y') }}</td>
+            <td class="desc-cell">
+              <a href="/transactions/{{ tx.id }}" class="tx-link">
+                {{ tx.cleaned_description or tx.original_description }}
+              </a>
+              {% if tx.transaction_type.value == 'income' %}
+                <span class="badge badge-success">CR</span>
+              {% elif tx.transaction_type.value == 'transfer' %}
+                <span class="badge badge-info">TRANSFER</span>
+              {% else %}
+                <span class="badge badge-danger">DR</span>
+              {% endif %}
+            </td>
+            <td class="amount-cell text-right">
+              {% if tx.effective_amount is not none and tx.effective_amount != tx.amount %}
+              <span class="amount {% if tx.transaction_type.value == 'income' %}amount-credit{% else %}amount-debit{% endif %}">
+                {{ '{:,.2f}'.format(tx.effective_amount) }}
+              </span>
+              <span class="currency">{{ tx.currency }}</span>
+              <div class="text-muted text-xs">Full: {{ '{:,.2f}'.format(tx.amount) }}</div>
+              {% else %}
+              <span class="amount {% if tx.transaction_type.value == 'income' %}amount-credit{% else %}amount-debit{% endif %}">
+                {{ '{:,.2f}'.format(tx.amount) }}
+              </span>
+              <span class="currency">{{ tx.currency }}</span>
+              {% endif %}
+            </td>
+            <td class="category-cell">
+              {% if tx.category %}
+                <span class="category-badge" style="background-color: {{ tx.category.color }}20; color: {{ tx.category.color }};">
+                  {{ tx.category.name }}
+                </span>
+              {% else %}
+                <span class="badge badge-warning">Uncategorized</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // Safely parse data with defaults
+    const monthlyData = {{ monthly_data | tojson }} || { labels: [], expenses: [], income: [] };
+    const categoryData = {{ category_data | tojson }} || { labels: [], values: [] };
+
+    // Ensure arrays exist
+    monthlyData.labels = monthlyData.labels || [];
+    monthlyData.expenses = monthlyData.expenses || [];
+    monthlyData.income = monthlyData.income || [];
+    categoryData.labels = categoryData.labels || [];
+    categoryData.values = categoryData.values || [];
+
+    // Indian number formatting (lakhs, crores) - compact form for Y-axis
+    function formatIndianCurrency(num, showSymbol = true) {
+      if (num === null || num === undefined || num === 0) return showSymbol ? '₹0' : '0';
+      const absNum = Math.abs(num);
+      const sign = num < 0 ? '-' : '';
+      const symbol = showSymbol ? '₹' : '';
+
+      if (absNum >= 10000000) {
+        // Crores (1,00,00,000+)
+        return sign + symbol + (absNum / 10000000).toFixed(1) + 'Cr';
+      } else if (absNum >= 100000) {
+        // Lakhs (1,00,000+)
+        return sign + symbol + (absNum / 100000).toFixed(1) + 'L';
+      } else if (absNum >= 1000) {
+        // Thousands
+        return sign + symbol + (absNum / 1000).toFixed(0) + 'K';
+      } else {
+        return sign + symbol + absNum.toFixed(0);
+      }
+    }
+
+    // Full Indian number formatting (for tooltips)
+    function formatIndianNumber(num) {
+      if (num === null || num === undefined) return '-';
+      return num.toLocaleString('en-IN');
+    }
+
+    // Custom tooltip element
+    const getOrCreateTooltip = (chart) => {
+      let tooltipEl = chart.canvas.parentNode.querySelector('.chart-tooltip');
+      if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'chart-tooltip';
+        tooltipEl.innerHTML = '<div class="tooltip-content"></div>';
+        chart.canvas.parentNode.appendChild(tooltipEl);
+      }
+      return tooltipEl;
+    };
+
+    // External tooltip handler
+    const externalTooltipHandler = (context) => {
+      const { chart, tooltip } = context;
+      const tooltipEl = getOrCreateTooltip(chart);
+
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = 0;
+        return;
+      }
+
+      if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+        const titleLines = tooltip.title || [];
+
+        let innerHtml = '<div class="tooltip-header">' + (titleLines.join(' ') || 'Data') + '</div>';
+        innerHtml += '<div class="tooltip-body">';
+
+        tooltip.dataPoints.forEach((dataPoint, i) => {
+          const colors = tooltip.labelColors ? tooltip.labelColors[i] : {};
+          const value = dataPoint.raw;
+          const label = dataPoint.dataset?.label || dataPoint.label || '';
+          const formattedValue = '₹' + formatIndianNumber(value);
+          const bgColor = colors.backgroundColor || colors.borderColor || '#3b82f6';
+
+          innerHtml += `
+            <div class="tooltip-row">
+              <span class="tooltip-color" style="background: ${bgColor}"></span>
+              <span class="tooltip-label">${label}</span>
+              <span class="tooltip-value">${formattedValue}</span>
+            </div>`;
+        });
+
+        innerHtml += '</div>';
+        tooltipEl.querySelector('.tooltip-content').innerHTML = innerHtml;
+      }
+
+      const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+      tooltipEl.style.opacity = 1;
+      tooltipEl.style.left = positionX + tooltip.caretX + 'px';
+      tooltipEl.style.top = positionY + tooltip.caretY + 'px';
+    };
+
+    // Monthly Chart
+    const mctx = document.getElementById('monthlyChart').getContext('2d');
+    const monthlyChart = new Chart(mctx, {
+      type: 'line',
+      data: {
+        labels: monthlyData.labels,
+        datasets: [{
+          label: 'Expenses',
+          data: monthlyData.expenses,
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          borderColor: '#ef4444',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4
+        }, {
+          label: 'Income',
+          data: monthlyData.income,
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          borderColor: '#10b981',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+          tooltip: {
+            enabled: false,
+            external: externalTooltipHandler
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return formatIndianCurrency(value);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Category Chart with custom tooltip
+    const categoryTooltipHandler = (context) => {
+      const { chart, tooltip } = context;
+      const tooltipEl = getOrCreateTooltip(chart);
+
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = 0;
+        return;
+      }
+
+      if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+        const dataPoint = tooltip.dataPoints[0];
+        const label = dataPoint.label || 'Unknown';
+        const value = dataPoint.raw || 0;
+        const data = dataPoint.dataset?.data || [value];
+        const total = data.reduce((a, b) => a + b, 0);
+        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+        const color = dataPoint.element?.options?.backgroundColor || '#3b82f6';
+
+        const innerHtml = `
+          <div class="tooltip-header">${label}</div>
+          <div class="tooltip-body">
+            <div class="tooltip-row">
+              <span class="tooltip-color" style="background: ${color}"></span>
+              <span class="tooltip-label">Amount</span>
+              <span class="tooltip-value">₹${formatIndianNumber(value)}</span>
+            </div>
+            <div class="tooltip-row">
+              <span class="tooltip-color" style="background: transparent"></span>
+              <span class="tooltip-label">Share</span>
+              <span class="tooltip-value">${percentage}%</span>
+            </div>
+          </div>`;
+
+        tooltipEl.querySelector('.tooltip-content').innerHTML = innerHtml;
+      }
+
+      const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+      tooltipEl.style.opacity = 1;
+      tooltipEl.style.left = positionX + tooltip.caretX + 'px';
+      tooltipEl.style.top = positionY + tooltip.caretY + 'px';
+    };
+
+    const cctx = document.getElementById('categoryChart').getContext('2d');
+    const categoryChart = new Chart(cctx, {
+      type: 'doughnut',
+      data: {
+        labels: categoryData.labels,
+        datasets: [{
+          data: categoryData.values,
+          backgroundColor: [
+            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1',
+            '#14b8a6', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4'
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+          },
+          tooltip: {
+            enabled: false,
+            external: categoryTooltipHandler
+          }
+        }
+      }
+    });
+
+    function updateCharts() {
+      // Placeholder for filter functionality
+      const excludeTransfers = document.getElementById('excludeTransfers').checked;
+      // In a real implementation, this would reload data via AJAX
+      console.log('Exclude transfers:', excludeTransfers);
+    }
+
+    // Format amounts in summary cards using Indian notation
+    function formatAmountFull(num) {
+      if (num === null || num === undefined) return '-';
+      const absNum = Math.abs(num);
+      const prefix = num < 0 ? '-₹' : '₹';
+      return prefix + absNum.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
+
+    // Format summary cards on page load
+    document.querySelectorAll('[data-amount]').forEach(el => {
+      const amount = parseFloat(el.dataset.amount);
+      el.textContent = formatAmountFull(amount);
+    });
+  </script>
+{% endblock %}

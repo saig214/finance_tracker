@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+
+{% block title %}{% if rule %}Edit Rule{% else %}Create Rule{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{% if rule %}Edit{% else %}Create{% endif %} Categorization Rule</h1>
+  <p class="page-subtitle">Search for transactions first, then {% if rule %}update{% else %}create{% endif %} a rule to
+    categorize them</p>
+</div>
+
+<!-- Step 1: Search Transactions -->
+<div class="card step-card">
+  <div class="step-header">
+    <span class="step-number">1</span>
+    <div>
+      <h2 class="step-title">Find Transactions</h2>
+      <p class="step-desc">Define conditions to match the transactions you want to categorize</p>
+    </div>
+  </div>
+
+  <div id="conditionsContainer">
+    <!-- Condition 1 (always present) -->
+    <div class="condition-item">
+      <div class="condition-row">
+        <div class="form-group">
+          <label class="form-label">Field</label>
+          <select class="form-select condition-field" onchange="liveSearch()">
+            <option value="description">Description (cleaned)</option>
+            <option value="original_description">Description (original)</option>
+            <option value="merchant_name">Merchant Name</option>
+            <option value="amount">Amount</option>
+            <option value="source_type">Source Type</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Operator</label>
+          <select class="form-select condition-operator" onchange="liveSearch()">
+            <option value="contains">Contains</option>
+            <option value="starts_with">Starts With</option>
+            <option value="ends_with">Ends With</option>
+            <option value="equals">Equals</option>
+            <option value="not_contains">Does Not Contain</option>
+            <option value="regex">Regex</option>
+            <option value="greater_than">Greater Than</option>
+            <option value="less_than">Less Than</option>
+            <option value="equals_number">Equals (Number)</option>
+          </select>
+        </div>
+
+        <div class="form-group flex-2">
+          <label class="form-label">Value</label>
+          <input type="text" class="form-input condition-value" placeholder="e.g., SWIGGY, Amazon, UPI"
+            oninput="debouncedSearch()">
+        </div>
+
+        <button type="button" class="btn btn-icon btn-remove" onclick="removeCondition(this)" title="Remove condition">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path
+              d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="condition-controls">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="addCondition()">+ Add Condition</button>
+
+    <div class="logic-selector">
+      <label class="form-label">Logic:</label>
+      <select class="form-select" id="ruleLogic" onchange="liveSearch()">
+        <option value="OR">OR (any can match)</option>
+        <option value="AND">AND (all must match)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Results Section -->
+<div class="card results-card" id="resultsSection">
+  <div class="results-header">
+    <h2 class="card-title">
+      <span id="resultsTitle">Matching Transactions</span>
+      <span class="results-count" id="resultsCount"></span>
+    </h2>
+    <div class="results-actions" id="resultsActions" style="display: none;">
+      <span class="results-summary" id="resultsSummary"></span>
+    </div>
+  </div>
+
+  <div id="resultsContent">
+    <div class="results-placeholder">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+      <p>Start typing to search transactions</p>
+      <p class="text-muted">Results will appear here as you type</p>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Create Rule (appears when matches found) -->
+<div class="card step-card" id="createRuleSection" style="display: none;">
+  <div class="step-header">
+    <span class="step-number">2</span>
+    <div>
+      <h2 class="step-title">Create Rule</h2>
+      <p class="step-desc">Save this as a rule to automatically categorize future transactions</p>
+    </div>
+  </div>
+
+  <form id="ruleForm" class="rule-form">
+    <div class="form-row">
+      <div class="form-group flex-2">
+        <label class="form-label">Rule Name</label>
+        <input type="text" class="form-input" id="ruleName" placeholder="e.g., Swiggy Food Orders" required>
+        <div class="form-help">A descriptive name for this rule</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Priority</label>
+        <input type="number" class="form-input" id="rulePriority" value="50" min="1" max="100" required>
+        <div class="form-help">Higher = applied first</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Assign Merchant</label>
+        <div class="flex-row">
+          <select class="form-select" id="ruleMerchant" style="flex: 1;" required onchange="liveSearch()">
+            <option value="" disabled selected>Select merchant...</option>
+            {% for m in merchants %}
+            <option value="{{ m.id }}">{{ m.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="showNewMerchantModal()"
+            title="Create new merchant">New</button>
+        </div>
+        <div class="form-help">Rule will assign this merchant and its default category.</div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-lg">
+        {% if rule %}Update{% else %}Create{% endif %} Rule & Apply to <span id="applyCount">0</span> Transactions
+      </button>
+      <a href="/rules" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<!-- New Merchant Modal -->
+<div id="merchantModal" class="modal" style="display: none;">
+  <div class="modal-content card">
+    <div class="modal-header">
+      <h2 class="card-title">Create New Merchant</h2>
+      <button type="button" class="btn-close" onclick="closeMerchantModal()">&times;</button>
+    </div>
+    <form id="newMerchantForm" class="merchant-form">
+      <div class="form-group">
+        <label class="form-label">Merchant Name</label>
+        <input type="text" id="m_name" name="name" class="form-input" required placeholder="e.g., Netflix">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Category</label>
+        <select id="m_category" name="default_category_id" class="form-select" required>
+          <option value="" disabled selected>Select category...</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create Merchant</button>
+        <button type="button" class="btn btn-secondary" onclick="closeMerchantModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Result Modal -->
+<div id="resultModal" class="modal" style="display: none;">
+  <div class="modal-content card">
+    <div class="modal-header">
+      <h2 class="card-title" id="resultModalTitle">Result</h2>
+      <button type="button" class="btn-close" onclick="goToRules()">&times;</button>
+    </div>
+    <div id="resultModalBody"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" onclick="goToRules()">Go to Rules</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showNewMerchantModal() {
+    document.getElementById('merchantModal').style.display = 'flex';
+  }
+
+  function closeMerchantModal() {
+    document.getElementById('merchantModal').style.display = 'none';
+    document.getElementById('newMerchantForm').reset();
+  }
+
+  document.getElementById('newMerchantForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+
+    // Call the new JSON merchant creation API
+    fetch('/manage/merchants/create/json', {
+      method: 'POST',
+      body: formData
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.id) {
+          // Add to the dropdown
+          const select = document.getElementById('ruleMerchant');
+          const option = new Option(data.name, data.id);
+          select.add(option);
+          select.value = data.id;
+
+          // Trigger live search to show the new attribution
+          liveSearch();
+
+          // Close modal
+          closeMerchantModal();
+        } else {
+          alert('Failed to create merchant: ' + (data.detail || 'Unknown error'));
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Error creating merchant');
+      });
+  });
+
+  let searchTimeout = null;
+  let lastMatchCount = 0;
+  let currentPage = 1;
+  const pageSize = 20;
+
+  function debouncedSearch() {
+    currentPage = 1; // Reset to first page on condition change
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(liveSearch, 300);
+  }
+
+  function changePage(delta) {
+    currentPage += delta;
+    liveSearch();
+  }
+
+  function addCondition(field = 'description', operator = 'contains', value = '') {
+    const container = document.getElementById('conditionsContainer');
+
+    // Helper to mark selected option
+    const sel = (a, b) => a === b ? 'selected' : '';
+
+    const conditionHtml = `
+      <div class="condition-item">
+        <div class="condition-row">
+          <div class="form-group">
+            <label class="form-label">Field</label>
+            <select class="form-select condition-field" onchange="debouncedSearch()">
+              <option value="description" ${sel('description', field)}>Description (cleaned)</option>
+              <option value="original_description" ${sel('original_description', field)}>Description (original)</option>
+              <option value="merchant_name" ${sel('merchant_name', field)}>Merchant Name</option>
+              <option value="amount" ${sel('amount', field)}>Amount</option>
+              <option value="source_type" ${sel('source_type', field)}>Source Type</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Operator</label>
+            <select class="form-select condition-operator" onchange="debouncedSearch()">
+              <option value="contains" ${sel('contains', operator)}>Contains</option>
+              <option value="starts_with" ${sel('starts_with', operator)}>Starts With</option>
+              <option value="ends_with" ${sel('ends_with', operator)}>Ends With</option>
+              <option value="equals" ${sel('equals', operator)}>Equals</option>
+              <option value="not_contains" ${sel('not_contains', operator)}>Does Not Contain</option>
+              <option value="regex" ${sel('regex', operator)}>Regex</option>
+              <option value="greater_than" ${sel('greater_than', operator)}>Greater Than</option>
+              <option value="less_than" ${sel('less_than', operator)}>Less Than</option>
+              <option value="equals_number" ${sel('equals_number', operator)}>Equals (Number)</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-2">
+            <label class="form-label">Value</label>
+            <input type="text" class="form-input condition-value" placeholder="e.g., SWIGGY" oninput="debouncedSearch()" value="${value.replace(/"/g, '&quot;')}">
+          </div>
+
+          <button type="button" class="btn btn-icon btn-remove" onclick="removeCondition(this)" title="Remove">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', conditionHtml);
+  }
+
+  function removeCondition(button) {
+    const conditionItem = button.closest('.condition-item');
+    const container = document.getElementById('conditionsContainer');
+    if (container.children.length > 1) {
+      conditionItem.remove();
+      liveSearch();
+    }
+  }
+
+  function getConditions() {
+    const conditions = [];
+    const items = document.querySelectorAll('.condition-item');
+
+    items.forEach(item => {
+      const field = item.querySelector('.condition-field').value;
+      const operator = item.querySelector('.condition-operator').value;
+      const value = item.querySelector('.condition-value').value;
+
+      if (value.trim()) {
+        conditions.push({ field, operator, value });
+      }
+    });
+
+    return {
+      rules: conditions,
+      logic: document.getElementById('ruleLogic').value
+    };
+  }
+
+  function formatAmount(amount) {
+    if (amount === null || amount === undefined) return '-';
+    const absAmount = Math.abs(amount);
+    if (absAmount >= 10000000) return '₹' + (absAmount / 10000000).toFixed(1) + 'Cr';
+    if (absAmount >= 100000) return '₹' + (absAmount / 100000).toFixed(1) + 'L';
+    return '₹' + absAmount.toLocaleString('en-IN');
+  }
+
+  async function liveSearch() {
+    const conditions = getConditions();
+    const resultsContent = document.getElementById('resultsContent');
+    const resultsCount = document.getElementById('resultsCount');
+    const createSection = document.getElementById('createRuleSection');
+    const resultsActions = document.getElementById('resultsActions');
+
+    // Need at least one condition with a value
+    if (conditions.rules.length === 0) {
+      resultsContent.innerHTML = `
+        <div class="results-placeholder">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+          <p>Start typing to search transactions</p>
+          <p class="text-muted">Results will appear here as you type</p>
+        </div>
+      `;
+      resultsCount.textContent = '';
+      createSection.style.display = 'none';
+      resultsActions.style.display = 'none';
+      return;
+    }
+
+    resultsContent.innerHTML = '<div class="results-loading"><div class="spinner"></div> Searching...</div>';
+
+    const merchantId = document.getElementById('ruleMerchant').value;
+    const previewData = {
+      conditions,
+      page: currentPage,
+      page_size: pageSize
+    };
+    if (merchantId) {
+      previewData.merchant_id = parseInt(merchantId);
+    }
+
+    try {
+      const response = await fetch('/rules/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(previewData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const count = data.total_matches || 0;
+      const samples = data.sample_transactions || [];
+      const stats = data.statistics || {};
+
+      const autoCount = stats.auto_count || 0;
+      const manualCount = stats.manual_count || 0;
+      lastMatchCount = autoCount;
+      resultsCount.textContent = count > 0 ? `(${count})` : '';
+      document.getElementById('applyCount').textContent = autoCount;
+
+      if (count === 0) {
+        resultsContent.innerHTML = `
+          <div class="results-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M8 15s1.5-2 4-2 4 2 4 2"></path>
+              <line x1="9" y1="9" x2="9.01" y2="9"></line>
+              <line x1="15" y1="9" x2="15.01" y2="9"></line>
+            </svg>
+            <p>No transactions match</p>
+            <p class="text-muted">Try adjusting your search conditions</p>
+          </div>
+        `;
+        createSection.style.display = 'none';
+        resultsActions.style.display = 'none';
+      } else {
+        // Build results table
+        const tableHtml = samples.map(tx => `
+          <tr class="result-row ${tx.type === 'income' ? 'income' : 'expense'}">
+            <td class="date-cell">${tx.date || '-'}</td>
+            <td class="desc-cell">
+              <span class="tx-description">${(tx.description || 'No description').substring(0, 50)}${(tx.description || '').length > 50 ? '...' : ''}</span>
+            </td>
+            <td class="merchant-cell">${tx.merchant || '-'}</td>
+            <td class="amount-cell text-right">
+              <span class="amount ${tx.type === 'income' ? 'amount-credit' : 'amount-debit'}">
+                ${tx.type === 'income' ? '+' : '-'}${formatAmount(tx.amount)}
+              </span>
+            </td>
+            <td class="category-cell">
+              ${tx.category ? `<span class="category-badge">${tx.category}</span>` : '<span class="text-muted">-</span>'}
+            </td>
+          </tr>
+        `).join('');
+
+        resultsContent.innerHTML = `
+          <div class="table-container table-container-flat">
+            <table class="transactions-table results-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Merchant</th>
+                  <th class="text-right">Amount</th>
+                  <th>Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableHtml}
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination-controls">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="changePage(-1)" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+            <span class="pagination-info">Page ${currentPage} of ${Math.ceil(count / pageSize) || 1}</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="changePage(1)" ${currentPage * pageSize >= count ? 'disabled' : ''}>Next</button>
+          </div>
+        `;
+
+        // Show stats and create section
+        const totalAmount = stats.total_amount || 0;
+        const targetMerchant = data.target_merchant_name;
+
+        if (targetMerchant) {
+          let summaryHtml = `Total: ${formatAmount(totalAmount)}`;
+          summaryHtml += `<br><small class="text-muted">Will be attributed to: <strong>${targetMerchant}</strong></small>`;
+          if (manualCount > 0) {
+            summaryHtml += `<br><small class="text-muted" style="color: var(--warning, #b45309);">${manualCount} manually categorized transaction${manualCount > 1 ? 's' : ''} will be skipped</small>`;
+          }
+          document.getElementById('resultsSummary').innerHTML = summaryHtml;
+        } else {
+          document.getElementById('resultsSummary').innerHTML = `
+            Total: ${formatAmount(totalAmount)} <br>
+            <small class="text-muted">Select a merchant below to preview attribution</small>
+          `;
+        }
+        resultsActions.style.display = 'flex';
+        createSection.style.display = 'block';
+
+        // Auto-suggest rule name from first condition
+        const firstValue = conditions.rules[0]?.value || '';
+        if (firstValue && !document.getElementById('ruleName').value) {
+          document.getElementById('ruleName').value = firstValue.charAt(0).toUpperCase() + firstValue.slice(1).toLowerCase() + ' Transactions';
+        }
+      }
+    } catch (error) {
+      resultsContent.innerHTML = `
+        <div class="results-error">
+          <p>Failed to search: ${error.message}</p>
+        </div>
+      `;
+      createSection.style.display = 'none';
+    }
+  }
+
+  document.getElementById('ruleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const name = document.getElementById('ruleName').value;
+    const priority = parseInt(document.getElementById('rulePriority').value);
+    const merchantId = document.getElementById('ruleMerchant').value;
+    const conditions = getConditions();
+
+    if (!merchantId) {
+      alert('Please select a merchant attribution');
+      return;
+    }
+
+    if (conditions.rules.length === 0) {
+      alert('Please add at least one search condition');
+      return;
+    }
+
+    try {
+      const requestBody = {
+        name,
+        priority,
+        merchant_id: parseInt(merchantId),
+        conditions,
+        apply_immediately: true
+      };
+
+      if (merchantId) {
+        requestBody.merchant_id = parseInt(merchantId);
+      }
+
+      // Determine if we're editing or creating
+      {% if rule %}
+      const isEdit = true;
+      const ruleId = {{ rule.id }};
+    {% else %}
+    const isEdit = false;
+    const ruleId = null;
+    {% endif %}
+
+    const endpoint = isEdit ? `/rules/${ruleId}/update` : '/rules/create';
+    const successMessage = isEdit ? 'Rule updated!' : 'Rule created!';
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const updated = data.transactions_updated || 0;
+      const skipped = data.transactions_skipped || 0;
+      let msg = `${updated} transaction${updated !== 1 ? 's' : ''} updated`;
+      if (skipped > 0) msg += `, ${skipped} manual skipped`;
+      notyf.success({ message: `${successMessage} ${msg}`, duration: 5000 });
+      setTimeout(() => { window.location.href = '/rules'; }, 1200);
+    } else {
+      const error = await response.json();
+      notyf.error(error.detail || 'Failed to save rule');
+    }
+  } catch (error) {
+    notyf.error(error.message);
+  }
+  });
+
+  // Initialization logic for Edit/Preview modes
+  (function init() {
+    {% if rule %}
+    // Pre-fill rule details
+    const ruleNameInput = document.getElementById('ruleName');
+    const rulePriorityInput = document.getElementById('rulePriority');
+    const ruleMerchantSelect = document.getElementById('ruleMerchant');
+
+    if (ruleNameInput) ruleNameInput.value = "{{ rule.name }}";
+    if (rulePriorityInput) rulePriorityInput.value = "{{ rule.priority }}";
+
+    // Handle Merchant ID being None in python -> "None" string in template
+    const mId = "{{ rule.merchant_id }}";
+    if (mId && mId !== "None" && ruleMerchantSelect) {
+      ruleMerchantSelect.value = mId;
+    }
+
+    // Pre-fill Conditions
+    // We rely on Jinja2's dict structure printing. 
+    // safe filter ensures quotes aren't escaped, but standard python dict string usually uses single quotes
+    // which is not valid JSON. We need to be careful.
+    // Better approach: Use a hacky parser or assume simple structure if tojson isn't available.
+    // But FastAPI Jinja2 usually has tojson? If not, we rely on the fact that {{ rule.conditions }} prints a python dict.
+    // Let's rely on server-side rendering returning a valid object via a script tag if possible, 
+    // but here we are in a block.
+
+    // Let's try to parse the string representation of the dict from python
+    // This is brittle but works for simple cases. 
+    // Ideally, update backend to pass json string.
+    // Assuming 'rule.conditions' is a dict.
+
+    try {
+      // We will clear the default condition added by HTML
+      const container = document.getElementById('conditionsContainer');
+      container.innerHTML = '';
+
+      // This is a bit unsafe without a proper JSON filter. 
+      // Let's assume the backend passed a dict. 
+      // We'll define a variable with the data.
+      // Note: rule.conditions is a Python dict. 
+      // {{ rule.conditions }} renders "{'rules': [...]}". 
+      // We can't easily parse that in JS.
+      // WORKAROUND: We will iterate via Jinja loop to build JS calls.
+      {% if rule and rule.conditions %}
+      {% if rule.conditions.rules %}
+      {% for cond in rule.conditions.rules %}
+      addCondition("{{ cond.field }}", "{{ cond.operator }}", "{{ cond.value }}");
+      {% endfor %}
+      {% else %}
+      addCondition(); // Add one empty condition if no rules exist
+      {% endif %}
+
+      {% if rule.conditions.logic %}
+      const logic = "{{ rule.conditions.logic }}";
+      if (logic && document.getElementById('ruleLogic')) {
+        document.getElementById('ruleLogic').value = logic;
+      }
+      {% endif %}
+      {% else %}
+      addCondition(); // Fallback for create mode
+      {% endif %}
+
+    } catch (e) {
+      console.error("Failed to init conditions", e);
+      addCondition(); // Fallback
+    }
+
+    {% if auto_preview %}
+    // Auto-scroll to results and search
+    setTimeout(() => {
+      liveSearch();
+      document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+    }, 500);
+    {% endif %}
+
+    {% else %}
+    // Default state: Add one empty condition if container is currently empty
+    const container = document.getElementById('conditionsContainer');
+    if (container.children.length === 0) {
+      addCondition();
+    }
+
+    // Handle prefill_query from URL parameter
+    {% if prefill_query %}
+    const prefillQuery = "{{ prefill_query }}";
+    if (prefillQuery) {
+      // Set the value in the first condition
+      const firstConditionValue = container.querySelector('.condition-value');
+      if (firstConditionValue) {
+        firstConditionValue.value = prefillQuery;
+        // Trigger search after a short delay to ensure DOM is ready
+        setTimeout(() => {
+          liveSearch();
+          document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+    }
+    {% endif %}
+    {% endif %}
+  })();
+</script>
+
+{% endblock %}

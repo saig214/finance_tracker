@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Data (Ignore ALL user data - contains personal financial information)
+data/*
+!data/.keep
+!data/**/.keep
+!data/db/.keep
+!data/db/
+!data/raw/.keep
+!data/raw/
+!data/imports/.keep
+!data/imports/
+
+# Bank directory (user's statements)
+bank/
+
+# Specifically ignore common data files
+*.json
+!package.json
+!tsconfig.json
+!**/configs/*.json
+!examples/**/*.json
+*.csv
+!examples/**/*.csv
+*.pdf
+*.txt
+!requirements.txt
+!README.txt
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}Merchants{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Merchants</h1>
+  <div class="summary-stats">
+    <div class="stat">
+      <span class="stat-label">Total</span>
+      <span class="stat-value">{{ total }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Add New Merchant -->
+<div class="card mb-6">
+  <h2 class="card-title">Add New Merchant</h2>
+  <form method="post" class="merchant-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Merchant Name</label>
+        <input type="text" name="name" placeholder="e.g., Swiggy, John Doe" required class="form-input" />
+      </div>
+      <div class="form-group type-select">
+        <label class="form-label">Type</label>
+        <select name="type" class="form-select">
+          <option value="business" selected>Business</option>
+          <option value="individual">Person</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Category</label>
+        <select name="default_category_id" class="form-select" required>
+          <option value="" disabled selected>Select category...</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group btn-group">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Search & Filters -->
+<form method="get" class="filters-bar">
+  <div class="filter-group">
+    <input type="text" name="q" placeholder="Search merchants..." value="{{ q }}" class="search-input" />
+    <select name="sort" class="filter-select" onchange="this.form.submit()">
+      <option value="name" {% if sort=='name' %}selected{% endif %}>Sort by Name</option>
+      <option value="category" {% if sort=='category' %}selected{% endif %}>Sort by Category</option>
+      <option value="type" {% if sort=='type' %}selected{% endif %}>Sort by Type</option>
+    </select>
+    <select name="order" class="filter-select" onchange="this.form.submit()">
+      <option value="asc" {% if order=='asc' %}selected{% endif %}>Ascending</option>
+      <option value="desc" {% if order=='desc' %}selected{% endif %}>Descending</option>
+    </select>
+    <input type="hidden" name="page" value="1" />
+    <input type="hidden" name="page_size" value="{{ page_size }}" />
+    <button type="submit" class="btn btn-primary">Search</button>
+    <a href="/manage/merchants" class="btn btn-secondary">Clear</a>
+  </div>
+</form>
+
+<!-- Merchants Table -->
+<div class="table-container">
+  <table class="transactions-table" id="merchantsTable">
+    <thead>
+      <tr>
+        <th>
+          <a href="?sort=name&order={% if sort == 'name' and order == 'asc' %}desc{% else %}asc{% endif %}&q={{ q }}&page=1&page_size={{ page_size }}"
+            class="sort-link">
+            Merchant / Person
+            {% if sort == 'name' %}
+            <span class="sort-icon">{% if order == 'asc' %}↑{% else %}↓{% endif %}</span>
+            {% endif %}
+          </a>
+        </th>
+        <th>Type</th>
+        <th>
+          <a href="?sort=category&order={% if sort == 'category' and order == 'asc' %}desc{% else %}asc{% endif %}&q={{ q }}&page=1&page_size={{ page_size }}"
+            class="sort-link">
+            Default Category
+            {% if sort == 'category' %}
+            <span class="sort-icon">{% if order == 'asc' %}↑{% else %}↓{% endif %}</span>
+            {% endif %}
+          </a>
+        </th>
+        <th>Transactions</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in merchants %}
+      <tr class="merchant-row" data-merchant-id="{{ m.id }}">
+        <td class="merchant-name-cell">
+          <span class="merchant-name view-mode">{{ m.name }}</span>
+          <input type="text" class="merchant-name-input edit-mode" value="{{ m.name }}" style="display: none;" />
+          {% if m.aliases %}
+          <div class="merchant-aliases">
+            {% for alias in m.aliases[:3] %}
+            <span class="alias-badge">{{ alias.alias }}</span>
+            {% endfor %}
+            {% if m.aliases|length > 3 %}
+            <span class="alias-more">+{{ m.aliases|length - 3 }} more</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <span class="view-mode">
+            {% if m.type == 'individual' %}
+            <span class="badge badge-info">Person</span>
+            {% else %}
+            <span class="badge" style="color: var(--text-secondary); background: var(--light);">Business</span>
+            {% endif %}
+          </span>
+          <select class="merchant-type-select edit-mode form-select" style="display: none;">
+            <option value="business" {% if m.type=='business' %}selected{% endif %}>Business</option>
+            <option value="individual" {% if m.type=='individual' %}selected{% endif %}>Person</option>
+          </select>
+        </td>
+        <td class="category-cell">
+          <span class="view-mode">
+            {% if m.default_category %}
+            <span class="category-badge"
+              style="background-color: {{ m.default_category.color or '#6b7280' }}20; color: {{ m.default_category.color or '#6b7280' }};">
+              {{ m.default_category.name }}
+            </span>
+            {% else %}
+            <span class="text-muted">No default</span>
+            {% endif %}
+          </span>
+          <select class="merchant-category-select edit-mode form-select" style="display: none;">
+            {% for cat in categories %}
+            <option value="{{ cat.id }}" {% if m.default_category and cat.id==m.default_category.id %}selected{% endif
+              %}>{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="count-cell">
+          <span class="count-badge">{{ m.transaction_count if m.transaction_count is defined else 0 }}</span>
+        </td>
+        <td class="actions-cell">
+          <div class="view-mode">
+            <button class="btn btn-primary btn-sm edit-btn" onclick="editMerchant({{ m.id }})">Edit</button>
+            <a href="/transactions?merchant_id={{ m.id }}" class="btn btn-secondary btn-sm">View Txns</a>
+          </div>
+          <div class="edit-mode" style="display: none;">
+            <button class="btn btn-success btn-sm save-btn" onclick="saveMerchant({{ m.id }})">Save</button>
+            <button class="btn btn-secondary btn-sm cancel-btn" onclick="cancelEdit({{ m.id }})">Cancel</button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+          No merchants found{% if q %} matching "{{ q }}"{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% set total_pages = ((total + page_size - 1) // page_size) %}
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page - 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&q={{ q }}"
+    class="btn btn-secondary">← Previous</a>
+  {% endif %}
+
+  <div class="page-numbers">
+    {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+    <span class="page-number active">{{ p }}</span>
+    {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %} <a
+      href="?page={{ p }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&q={{ q }}" class="page-number">{{
+      p }}</a>
+      {% elif p == page - 3 or p == page + 3 %}
+      <span class="page-ellipsis">...</span>
+      {% endif %}
+      {% endfor %}
+  </div>
+
+  {% if page < total_pages %} <a
+    href="?page={{ page + 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&q={{ q }}"
+    class="btn btn-secondary">Next →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="page-info-bar">
+  Showing {{ ((page - 1) * page_size) + 1 }} - {{ [page * page_size, total]|min }} of {{ total }} merchants
+</div>
+
+<script>
+  function editMerchant(merchantId) {
+    const row = document.querySelector(`tr[data-merchant-id="${merchantId}"]`);
+    if (!row) return;
+
+    // Hide view mode, show edit mode
+    row.querySelectorAll('.view-mode').forEach(el => el.style.display = 'none');
+    row.querySelectorAll('.edit-mode').forEach(el => el.style.display = '');
+  }
+
+  function cancelEdit(merchantId) {
+    const row = document.querySelector(`tr[data-merchant-id="${merchantId}"]`);
+    if (!row) return;
+
+    // Show view mode, hide edit mode
+    row.querySelectorAll('.view-mode').forEach(el => el.style.display = '');
+    row.querySelectorAll('.edit-mode').forEach(el => el.style.display = 'none');
+
+    // Reset form values to original
+    const nameInput = row.querySelector('.merchant-name-input');
+    const typeSelect = row.querySelector('.merchant-type-select');
+    const categorySelect = row.querySelector('.merchant-category-select');
+
+    if (nameInput) nameInput.value = nameInput.defaultValue;
+    if (typeSelect) typeSelect.value = typeSelect.querySelector('option[selected]')?.value || 'business';
+    if (categorySelect) {
+      const selectedOption = categorySelect.querySelector('option[selected]');
+      if (selectedOption) categorySelect.value = selectedOption.value;
+    }
+  }
+
+  async function saveMerchant(merchantId) {
+    const row = document.querySelector(`tr[data-merchant-id="${merchantId}"]`);
+    if (!row) return;
+
+    const nameInput = row.querySelector('.merchant-name-input');
+    const typeSelect = row.querySelector('.merchant-type-select');
+    const categorySelect = row.querySelector('.merchant-category-select');
+
+    const data = {
+      name: nameInput.value.trim(),
+      type: typeSelect.value,
+      default_category_id: parseInt(categorySelect.value)
+    };
+
+    if (!data.name) {
+      alert('Merchant name cannot be empty');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('name', data.name);
+      formData.append('type', data.type);
+      formData.append('default_category_id', data.default_category_id);
+
+      const response = await fetch(`/manage/merchants/${merchantId}/edit`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        // Reload the page to show updated data
+        window.location.reload();
+      } else {
+        const error = await response.text();
+        alert('Failed to update merchant: ' + error);
+      }
+    } catch (error) {
+      console.error('Error updating merchant:', error);
+      alert('Failed to update merchant. Please try again.');
+    }
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+# Data files (personal financial data)
+data/
+bank/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+
+# Raw files that aren't code
+*.pdf
+*.csv
+*.log
+
+# Environment
+.venv/
+venv/
+.env
+.env.local

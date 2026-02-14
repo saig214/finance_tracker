@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Transaction{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Edit Transaction</h1>
+  <a href="/transactions" class="btn btn-secondary">Back to List</a>
+</div>
+
+<div class="edit-layout">
+  <!-- Transaction Details Card -->
+  <div class="card">
+    <h2 class="card-title">Transaction Details</h2>
+
+    <div class="detail-grid">
+      <div class="detail-item">
+        <label>Date</label>
+        <span>{{ tx.transaction_date.strftime('%d %B %Y') }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Type</label>
+        <span>
+          {% if tx.transaction_type.value == 'income' %}
+          <span class="badge badge-success">Credit</span>
+          {% elif tx.transaction_type.value == 'transfer' %}
+          <span class="badge badge-info">Transfer</span>
+          {% else %}
+          <span class="badge badge-danger">Debit</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="detail-item">
+        <label>{% if tx.effective_amount is not none and tx.effective_amount != tx.amount %}Amount (Bank){% else %}Amount{% endif %}</label>
+        <span
+          class="amount-display {% if tx.transaction_type.value == 'income' %}amount-credit{% else %}amount-debit{% endif %}">
+          {{ '{:,.2f}'.format(tx.amount) }} {{ tx.currency }}
+        </span>
+      </div>
+      {% if tx.effective_amount is not none and tx.effective_amount != tx.amount %}
+      <div class="detail-item">
+        <label>Your Share (Effective)</label>
+        <span class="amount-display amount-debit">
+          {{ '{:,.2f}'.format(tx.effective_amount) }} {{ tx.currency }}
+        </span>
+      </div>
+      {% endif %}
+      {% if tx.is_provisional %}
+      <div class="detail-item">
+        <label>Status</label>
+        <span class="badge badge-warning">Provisional</span>
+        <span class="text-muted text-xs">Auto-created from Splitwise (friend paid)</span>
+      </div>
+      {% endif %}
+      <div class="detail-item">
+        <label>Source</label>
+        {% set parser_meta = (tx.metadata_json or {}).get('parser_metadata', {}) %}
+        {% set bank = parser_meta.get('bank') %}
+        {% set product = parser_meta.get('product') %}
+        {% set source_label = (bank|title ~ ' · ' ~ product.replace('_', ' ')|title) if bank and product else (tx.source_type.value if tx.source_type else 'Unknown') %}
+        <span title="Profile: {{ parser_meta.get('profile_id', 'n/a') }} | Extraction: {{ parser_meta.get('extraction_method', 'n/a') }} | Match: {{ '%.0f%%'|format((parser_meta.get('match_score', 0) * 100)) if parser_meta.get('match_score') is not none else 'n/a' }}">
+          {{ source_label }}
+        </span>
+      </div>
+      <div class="detail-item full-width">
+        <label>Original Description</label>
+        <span class="description-text">{{ tx.original_description }}</span>
+      </div>
+      {% if tx.cleaned_description and tx.cleaned_description != tx.original_description %}
+      <div class="detail-item full-width">
+        <label>Cleaned Description</label>
+        <div class="flex-row">
+          <span class="description-text">{{ tx.cleaned_description }}</span>
+          <a href="/transactions?q={{ tx.cleaned_description }}" class="filter-link" title="Filter by this description">
+            🔍 Filter Similar
+          </a>
+          <a href="/rules/create?q={{ tx.cleaned_description }}" class="btn btn-primary btn-sm"
+            title="Create rule for similar transactions">
+            ⚡ Create Rule
+          </a>
+        </div>
+      </div>
+      {% else %}
+      <div class="detail-item full-width">
+        <label>Filter</label>
+        <div class="flex-row">
+          <a href="/transactions?q={{ tx.original_description }}" class="filter-link"
+            title="Filter by this description">
+            🔍 Filter Similar Transactions
+          </a>
+          <a href="/rules/create?q={{ tx.original_description }}" class="btn btn-primary btn-sm"
+            title="Create rule for similar transactions">
+            ⚡ Create Rule
+          </a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Edit Form Card -->
+  <div class="card">
+    <h2 class="card-title">Update Information</h2>
+
+    <form method="post" action="/transactions/{{ tx.id }}" class="edit-form">
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <div class="static-input">
+          {% if tx.category %}
+          <span class="category-badge"
+            style="background-color: {{ tx.category.color }}20; color: {{ tx.category.color }};">
+            {{ tx.category.name }}
+          </span>
+          {% if tx.is_category_auto %}
+          <span class="text-muted text-xs ml-2">(Derived from Merchant)</span>
+          {% endif %}
+          {% else %}
+          <span class="text-muted">Uncategorized</span>
+          {% endif %}
+        </div>
+        <div class="form-help">Category is determined automatically by the selected Merchant.</div>
+      </div>
+
+      <div class="form-group">
+        <div class="flex-row" style="justify-content: space-between; align-items: baseline; margin-bottom: 0.25rem;">
+          <label class="form-label" style="margin-bottom: 0;">Merchant</label>
+          <a href="/manage/merchants" target="_blank" style="font-size: 0.8rem; text-decoration: none;">Manage All ↗</a>
+        </div>
+        <div class="flex-row">
+          <select name="merchant_id" id="merchantSelect" class="form-select" style="flex: 1;">
+            <option value="">Unknown Merchant</option>
+            {% for m in merchants %}
+            <option value="{{ m.id }}" {% if tx.merchant_id==m.id %}selected{% endif %}>{{ m.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-secondary" onclick="showNewMerchantModal()"
+            title="Create new merchant">New</button>
+        </div>
+        <div class="form-help">Assigning a merchant will automatically set the category.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" rows="3" class="form-textarea"
+          placeholder="Add any notes about this transaction...">{{ tx.notes or "" }}</textarea>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="/transactions" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- New Merchant Modal -->
+<div id="merchantModal" class="modal" style="display: none;">
+  <div class="modal-content card">
+    <div class="modal-header">
+      <h2 class="card-title">Create New Merchant</h2>
+      <button type="button" class="btn-close" onclick="closeMerchantModal()">&times;</button>
+    </div>
+    <form id="newMerchantForm" class="merchant-form">
+      <div class="form-group">
+        <label class="form-label">Merchant Name</label>
+        <input type="text" name="name" class="form-input" required placeholder="e.g., Netflix">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Category</label>
+        <select name="default_category_id" class="form-select" required>
+          <option value="" disabled selected>Select category...</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create Merchant</button>
+        <button type="button" class="btn btn-secondary" onclick="closeMerchantModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function showNewMerchantModal() {
+    document.getElementById('merchantModal').style.display = 'flex';
+  }
+
+  function closeMerchantModal() {
+    document.getElementById('merchantModal').style.display = 'none';
+    document.getElementById('newMerchantForm').reset();
+  }
+
+  document.getElementById('newMerchantForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+
+    // Call the JSON merchant creation API
+    fetch('/manage/merchants/create/json', {
+      method: 'POST',
+      body: formData
+    })
+      .then(response => {
+        if (!response.ok) {
+          return response.text().then(text => {
+            throw new Error(`Server error: ${response.status} - ${text}`);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.id) {
+          // Add to the dropdown
+          const select = document.getElementById('merchantSelect');
+          const option = new Option(data.name, data.id);
+          select.add(option);
+          select.value = data.id;
+
+          // Close modal
+          closeMerchantModal();
+
+          // Optional: You could allow the backend to update category via JS, 
+          // but for now, the user saves the form to apply changes.
+          // Or we could trigger a reload if we wanted immediate visual feedback on category.
+        } else {
+          alert('Failed to create merchant: Invalid response from server');
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Error creating merchant: ' + err.message);
+      });
+  });
+</script>
+{% endblock %}

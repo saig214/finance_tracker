@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Rule Suggestions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Smart Rule Suggestions</h1>
+    <p class="page-subtitle">Discover patterns in uncategorized transactions and create rules quickly</p>
+  </div>
+</div>
+
+<!-- Metadata Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M12 6v6l4 2"></path>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Uncategorized Transactions</div>
+      <div class="stat-value">{{ uncategorized_count }}</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Total Transactions</div>
+      <div class="stat-value">{{ total_transaction_count }}</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Uncategorized %</div>
+      <div class="stat-value">
+        {% if total_transaction_count > 0 %}
+          {{ "%.1f"|format((uncategorized_count / total_transaction_count) * 100) }}%
+        {% else %}
+          0%
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scan Button -->
+{% if uncategorized_count > 0 %}
+<div class="scan-section">
+  <button
+    class="btn btn-primary btn-large"
+    hx-post="/suggestions/scan"
+    hx-target="#results-container"
+    hx-indicator="#scan-spinner"
+  >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+    </svg>
+    Scan for Patterns
+  </button>
+  <div id="scan-spinner" class="spinner htmx-indicator">
+    <div class="spinner-icon"></div>
+    <span>Analyzing transactions...</span>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M9 11l3 3L22 4"></path>
+    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+  </svg>
+  <h3>All transactions are categorized!</h3>
+  <p>You don't have any uncategorized transactions. Great job!</p>
+  <a href="/transactions" class="btn btn-primary">View Transactions</a>
+</div>
+{% endif %}
+
+<!-- Results Container (populated by HTMX) -->
+<div id="results-container"></div>
+
+<!-- Include HTMX -->
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+{% endblock %}

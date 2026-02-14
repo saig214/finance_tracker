@@ -1,0 +1,69 @@
+{% if suggestions %}
+<div class="results-section">
+  <div class="results-header">
+    <h2>Found {{ suggestions|length }} Pattern{{ 's' if suggestions|length != 1 else '' }}</h2>
+    <p class="results-subtitle">Sorted by transaction count. Create rules to categorize automatically.</p>
+  </div>
+
+  <div class="suggestions-list">
+    {% for suggestion in suggestions %}
+    <div class="suggestion-card">
+      <div class="suggestion-card-header">
+        <code class="pattern-badge">{{ suggestion.pattern }}</code>
+        <a href="/rules/create?q={{ suggestion.pattern }}" class="btn btn-primary btn-sm">Create Rule</a>
+      </div>
+      <div class="suggestion-card-meta">
+        <span class="meta-count">{{ suggestion.transaction_count }} transactions</span>
+        <span class="meta-sep">&middot;</span>
+        <span class="amount-value{% if suggestion.total_amount < 0 %} amount-credit{% endif %}" data-amount="{{ suggestion.total_amount }}"></span>
+        <span class="meta-label">net</span>
+        <span class="meta-sep">&middot;</span>
+        <span class="amount-value{% if suggestion.avg_amount < 0 %} amount-credit{% endif %}" data-amount="{{ suggestion.avg_amount }}"></span>
+        <span class="meta-label">avg</span>
+        {% if suggestion.date_range %}
+        <span class="meta-sep">&middot;</span>
+        <span class="meta-date">{{ suggestion.date_range.earliest }} &ndash; {{ suggestion.date_range.latest }}</span>
+        {% endif %}
+      </div>
+      {% if suggestion.sample_descriptions %}
+      <div class="suggestion-card-samples">
+        {% for desc in suggestion.sample_descriptions[:3] %}
+          <div class="sample-desc">{{ desc }}</div>
+        {% endfor %}
+        {% if suggestion.sample_descriptions|length > 3 %}
+          <div class="sample-desc-more">+{{ suggestion.sample_descriptions|length - 3 }} more...</div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+(function() {
+  function fmt(n) {
+    var abs = Math.abs(n);
+    if (abs >= 10000000) return '\u20B9' + (abs / 10000000).toFixed(1) + ' Cr';
+    if (abs >= 100000) return '\u20B9' + (abs / 100000).toFixed(1) + ' L';
+    if (abs >= 1000) return '\u20B9' + abs.toLocaleString('en-IN', {maximumFractionDigits: 0});
+    return '\u20B9' + abs.toFixed(0);
+  }
+  document.querySelectorAll('.amount-value[data-amount]').forEach(function(el) {
+    var v = parseFloat(el.dataset.amount);
+    el.textContent = fmt(v);
+  });
+})();
+</script>
+{% else %}
+<div class="empty-results">
+  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" y1="8" x2="12" y2="12"></line>
+    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+  </svg>
+  <h3>No patterns found</h3>
+  <p>We couldn't find any groupable patterns in your uncategorized transactions.</p>
+  <p class="help-text">This typically means your uncategorized transactions are too diverse or there are very few of them.</p>
+</div>
+{% endif %}

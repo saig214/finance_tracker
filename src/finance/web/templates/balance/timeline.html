@@ -1,0 +1,710 @@
+{% extends "base.html" %}
+
+{% block title %}Balance Timeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Bank Account Balance Timeline</h1>
+  <div class="header-controls">
+    <div class="date-range-picker">
+      <label>
+        From: <input type="date" id="startDate" onchange="loadData()">
+      </label>
+      <label>
+        To: <input type="date" id="endDate" onchange="loadData()">
+      </label>
+      <button class="btn btn-secondary" onclick="resetDateRange()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary-cards">
+  <div class="card summary-card">
+    <div class="stat-label">Starting Balance</div>
+    <div class="stat-value" id="startBalance">-</div>
+  </div>
+  <div class="card summary-card">
+    <div class="stat-label">Current Balance</div>
+    <div class="stat-value" id="endBalance">-</div>
+  </div>
+  <div class="card summary-card">
+    <div class="stat-label">Change</div>
+    <div class="stat-value" id="balanceChange">-</div>
+  </div>
+  <div class="card summary-card">
+    <div class="stat-label">Min Balance</div>
+    <div class="stat-value" id="minBalance">-</div>
+  </div>
+  <div class="card summary-card">
+    <div class="stat-label">Max Balance</div>
+    <div class="stat-value" id="maxBalance">-</div>
+  </div>
+  <div class="card summary-card">
+    <div class="stat-label">Avg Balance</div>
+    <div class="stat-value" id="avgBalance">-</div>
+  </div>
+</div>
+
+<!-- Chart and Legend Layout -->
+<div class="chart-layout">
+  <!-- Chart Container -->
+  <div class="card chart-container">
+    <div id="balanceChart" style="width: 100%; height: 500px;"></div>
+    <!-- Custom Tooltip -->
+    <div id="customTooltip" class="balance-tooltip"></div>
+    <div class="chart-help">
+      <strong>Tips:</strong> Drag to zoom, double-click to reset. Click on points to see transaction details.
+    </div>
+  </div>
+
+  <!-- Visible Range Stats Panel -->
+  <div class="card stats-panel" id="statsPanel">
+    <h3 class="stats-title">Visible Period Insights</h3>
+    <div class="stats-period" id="statsPeriod">-</div>
+
+    <div class="stats-section">
+      <div class="stats-section-title">Balance</div>
+      <div class="stats-grid">
+        <div class="stats-item">
+          <span class="stats-icon high">↑</span>
+          <div class="stats-content">
+            <div class="stats-label">Highest</div>
+            <div class="stats-value" id="visibleMax">-</div>
+            <div class="stats-date" id="visibleMaxDate">-</div>
+          </div>
+        </div>
+        <div class="stats-item">
+          <span class="stats-icon low">↓</span>
+          <div class="stats-content">
+            <div class="stats-label">Lowest</div>
+            <div class="stats-value" id="visibleMin">-</div>
+            <div class="stats-date" id="visibleMinDate">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-section">
+      <div class="stats-section-title">Money Flow</div>
+      <div class="stats-grid">
+        <div class="stats-item">
+          <span class="stats-icon income">+</span>
+          <div class="stats-content">
+            <div class="stats-label">Total In</div>
+            <div class="stats-value income" id="visibleTotalIn">-</div>
+            <div class="stats-date" id="visibleInCount">- transactions</div>
+          </div>
+        </div>
+        <div class="stats-item">
+          <span class="stats-icon expense">−</span>
+          <div class="stats-content">
+            <div class="stats-label">Total Out</div>
+            <div class="stats-value expense" id="visibleTotalOut">-</div>
+            <div class="stats-date" id="visibleOutCount">- transactions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-section">
+      <div class="stats-section-title">All Merchants</div>
+      <div class="merchants-list" id="topMerchantsList">
+        <div class="stats-placeholder">Loading...</div>
+      </div>
+    </div>
+
+    <div class="stats-section">
+      <div class="stats-section-title">Largest Transactions</div>
+      <div class="transactions-list" id="largestTransactionsList">
+        <div class="stats-placeholder">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Day Transactions Panel -->
+<div class="card hidden mt-6" id="dayTransactionsPanel">
+  <div class="panel-header">
+    <h2 id="dayTransactionsTitle">Transactions</h2>
+    <button class="btn btn-secondary btn-sm" onclick="closeDayPanel()">Close</button>
+  </div>
+  <div class="table-container table-container-flat">
+    <table class="transactions-table">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Merchant</th>
+          <th>Category</th>
+          <th class="text-right">Amount</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="dayTransactionsBody">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+  let timelineData = [];
+  let visibleRange = { start: null, end: null };
+
+  // Format currency with Indian number system (lakhs, crores)
+  function formatCurrency(amount, compact = false) {
+    if (amount === null || amount === undefined) return '-';
+    const absAmount = Math.abs(amount);
+    const sign = amount < 0 ? '-' : '';
+
+    if (compact && absAmount >= 10000000) {
+      return sign + '₹' + (absAmount / 10000000).toFixed(1) + 'Cr';
+    } else if (compact && absAmount >= 100000) {
+      return sign + '₹' + (absAmount / 100000).toFixed(1) + 'L';
+    } else if (compact && absAmount >= 1000) {
+      return sign + '₹' + (absAmount / 1000).toFixed(0) + 'K';
+    }
+
+    return '₹' + absAmount.toLocaleString('en-IN');
+  }
+
+  // Load data from API
+  async function loadData() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+
+    let url = '/balance/api/data';
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (params.toString()) url += '?' + params.toString();
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      timelineData = data.timeline || [];
+      updateSummary(data.summary || {});
+      renderChart();
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    }
+  }
+
+  // Update summary cards
+  function updateSummary(summary) {
+    document.getElementById('startBalance').textContent = formatCurrency(summary.start_balance);
+    document.getElementById('endBalance').textContent = formatCurrency(summary.end_balance);
+
+    const changeEl = document.getElementById('balanceChange');
+    const change = summary.change || 0;
+    changeEl.textContent = (change >= 0 ? '+' : '') + formatCurrency(change);
+    changeEl.style.color = change >= 0 ? 'var(--success)' : 'var(--danger)';
+
+    document.getElementById('minBalance').textContent = formatCurrency(summary.min_balance);
+    document.getElementById('maxBalance').textContent = formatCurrency(summary.max_balance);
+    document.getElementById('avgBalance').textContent = formatCurrency(summary.avg_balance);
+  }
+
+  // Custom tooltip - fixed positioning
+  function showTooltip(event, data, pointIndex) {
+    const tooltip = document.getElementById('customTooltip');
+    const chartContainer = document.querySelector('.chart-container');
+    const containerRect = chartContainer.getBoundingClientRect();
+
+    const txnCount = data.transactions.length;
+    const totalIn = data.transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalOut = data.transactions
+      .filter(t => t.type !== 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Calculate cumulative change from previous day
+    const prevBalance = pointIndex > 0 ? timelineData[pointIndex - 1].balance : data.balance;
+    const dayChange = data.balance - prevBalance;
+    const changeSign = dayChange >= 0 ? '+' : '';
+    const changeClass = dayChange >= 0 ? 'up' : 'down';
+    const changeArrow = dayChange >= 0 ? '↑' : '↓';
+
+    tooltip.innerHTML = `
+      <div class="tooltip-header">
+        <div class="tooltip-date">${data.date}</div>
+        <div class="tooltip-change ${changeClass}">
+          <span class="change-arrow">${changeArrow}</span>
+          <span class="change-value">${changeSign}${formatCurrency(dayChange)}</span>
+        </div>
+      </div>
+      <div class="tooltip-balance">${formatCurrency(data.balance)}</div>
+      <div class="tooltip-stats">
+        <div class="tooltip-stat">
+          <span class="tooltip-stat-label">Transactions</span>
+          <span class="tooltip-stat-value">${txnCount}</span>
+        </div>
+        <div class="tooltip-stat income">
+          <span class="tooltip-stat-icon">+</span>
+          <span class="tooltip-stat-label">In</span>
+          <span class="tooltip-stat-value">${formatCurrency(totalIn)}</span>
+        </div>
+        <div class="tooltip-stat expense">
+          <span class="tooltip-stat-icon">−</span>
+          <span class="tooltip-stat-label">Out</span>
+          <span class="tooltip-stat-value">${formatCurrency(totalOut)}</span>
+        </div>
+      </div>
+      <div class="tooltip-hint">Click to view details</div>
+    `;
+
+    // Position to the side of the point, not on top
+    const x = event.clientX - containerRect.left;
+    const y = event.clientY - containerRect.top;
+
+    const tooltipWidth = 180;
+    const tooltipHeight = 180;
+
+    // Prefer positioning to the right, fall back to left
+    let left, top;
+    const offset = 25; // Distance from cursor
+
+    if (x + offset + tooltipWidth < containerRect.width - 20) {
+      // Position to the right
+      left = x + offset;
+    } else {
+      // Position to the left
+      left = x - offset - tooltipWidth;
+    }
+
+    // Center vertically relative to cursor
+    top = y - tooltipHeight / 2;
+
+    // Keep within vertical bounds
+    if (top < 10) top = 10;
+    if (top + tooltipHeight > containerRect.height - 10) top = containerRect.height - tooltipHeight - 10;
+
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+    tooltip.style.transform = 'none';
+    tooltip.style.opacity = '1';
+    tooltip.style.visibility = 'visible';
+  }
+
+  function hideTooltip() {
+    const tooltip = document.getElementById('customTooltip');
+    tooltip.style.opacity = '0';
+    tooltip.style.visibility = 'hidden';
+  }
+
+  // Update visible range stats
+  function updateVisibleStats(startDate, endDate) {
+    const visibleData = timelineData.filter(d => {
+      const date = new Date(d.date);
+      return (!startDate || date >= startDate) && (!endDate || date <= endDate);
+    });
+
+    if (visibleData.length === 0) return;
+
+    // Period
+    const firstDate = visibleData[0].date;
+    const lastDate = visibleData[visibleData.length - 1].date;
+    document.getElementById('statsPeriod').textContent = `${firstDate} to ${lastDate}`;
+
+    // Find max/min balance
+    let maxBalance = -Infinity, minBalance = Infinity;
+    let maxDate = '', minDate = '';
+
+    visibleData.forEach(d => {
+      if (d.balance > maxBalance) { maxBalance = d.balance; maxDate = d.date; }
+      if (d.balance < minBalance) { minBalance = d.balance; minDate = d.date; }
+    });
+
+    document.getElementById('visibleMax').textContent = formatCurrency(maxBalance);
+    document.getElementById('visibleMaxDate').textContent = maxDate;
+    document.getElementById('visibleMin').textContent = formatCurrency(minBalance);
+    document.getElementById('visibleMinDate').textContent = minDate;
+
+    // Collect all transactions in visible range
+    const allTxns = visibleData.flatMap(d => d.transactions.map(t => ({ ...t, date: d.date })));
+
+    // Total in/out
+    const inTxns = allTxns.filter(t => t.type === 'income');
+    const outTxns = allTxns.filter(t => t.type !== 'income');
+    const totalIn = inTxns.reduce((sum, t) => sum + t.amount, 0);
+    const totalOut = outTxns.reduce((sum, t) => sum + t.amount, 0);
+
+    document.getElementById('visibleTotalIn').textContent = formatCurrency(totalIn);
+    document.getElementById('visibleInCount').textContent = `${inTxns.length} transactions`;
+    document.getElementById('visibleTotalOut').textContent = formatCurrency(totalOut);
+    document.getElementById('visibleOutCount').textContent = `${outTxns.length} transactions`;
+
+    // Top merchants by net amount (Income - Expense)
+    const merchantTotals = {};
+    allTxns.forEach(t => {
+      const merchant = t.merchant || 'Unknown';
+      if (!merchantTotals[merchant]) merchantTotals[merchant] = { net: 0, count: 0 };
+
+      const signedAmount = t.type === 'income' ? t.amount : -t.amount;
+      merchantTotals[merchant].net += signedAmount;
+      merchantTotals[merchant].count++;
+    });
+
+    const topMerchants = Object.entries(merchantTotals)
+      .map(([name, data]) => ({ name, ...data }))
+      // Sort by absolute accumulated value desc (magnitude of activity)
+      .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+
+
+    document.getElementById('topMerchantsList').innerHTML = topMerchants.length > 0 ?
+      topMerchants.map(m => {
+        const isPositive = m.net >= 0;
+        const sign = isPositive ? '+' : '';
+        const colorClass = isPositive ? 'income' : 'expense';
+        // Use a color style: green for huge inflows, red/default for huge outflows
+        const amountStyle = isPositive ? 'color: var(--success);' : 'color: var(--danger);';
+
+        return `
+        <div class="merchant-item">
+          <span class="merchant-name">${m.name}</span>
+          <span class="merchant-amount" style="${amountStyle}">${sign}${formatCurrency(m.net, true)}</span>
+        </div>
+      `}).join('') : '<div class="stats-placeholder">No merchants</div>';
+
+    // Largest transactions
+    const largestTxns = [...allTxns]
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+
+    document.getElementById('largestTransactionsList').innerHTML = largestTxns.length > 0 ?
+      largestTxns.map(t => {
+        // Prefer merchant name, fall back to cleaned description, then raw description
+        const displayName = t.merchant || t.description || 'Unknown';
+        return `
+            <div class="txn-item ${t.type === 'income' ? 'income' : 'expense'}">
+              <div class="txn-desc">${displayName.substring(0, 25)}</div>
+              <div class="txn-amount">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount, true)}</div>
+            </div>
+          `;
+      }).join('') : '<div class="stats-placeholder">No transactions</div>';
+  }
+
+  // Render the Plotly chart
+  function renderChart() {
+    if (!timelineData || timelineData.length === 0) {
+      document.getElementById('balanceChart').innerHTML = '<p style="text-align:center;padding:2rem;color:var(--text-secondary);">No data available</p>';
+      return;
+    }
+
+    const dates = timelineData.map(d => d.date);
+    const balances = timelineData.map(d => d.balance);
+
+    // Color points based on day's net activity
+    const pointColors = timelineData.map(d => {
+      const netIn = d.transactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+      const netOut = d.transactions
+        .filter(t => t.type !== 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+      return netIn > netOut ? '#10b981' : '#ef4444';
+    });
+
+    const trace = {
+      x: dates,
+      y: balances,
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Balance',
+      line: {
+        color: '#3b82f6',
+        width: 2,
+        shape: 'spline'
+      },
+      marker: {
+        size: 10,
+        color: pointColors,
+        line: {
+          color: '#1e40af',
+          width: 2
+        }
+      },
+      hoverinfo: 'none',
+      fill: 'tozeroy',
+      fillcolor: 'rgba(59, 130, 246, 0.1)'
+    };
+
+    // Calculate tick values in Indian format
+    const maxBalance = Math.max(...balances);
+    const minBalance = Math.min(...balances);
+    const range = maxBalance - minBalance;
+    const tickCount = 6;
+    const tickStep = range / tickCount;
+    const tickVals = [];
+    const tickTexts = [];
+    for (let i = 0; i <= tickCount; i++) {
+      const val = minBalance + (tickStep * i);
+      tickVals.push(val);
+      tickTexts.push(formatCurrency(val, true));
+    }
+
+    const layout = {
+      title: {
+        text: 'Account Balance Over Time',
+        font: { size: 18 }
+      },
+      xaxis: {
+        title: 'Date',
+        type: 'date',
+        rangeslider: { visible: true },
+        rangeselector: {
+          buttons: [
+            { count: 1, label: '1M', step: 'month', stepmode: 'backward' },
+            { count: 3, label: '3M', step: 'month', stepmode: 'backward' },
+            { count: 6, label: '6M', step: 'month', stepmode: 'backward' },
+            { count: 1, label: '1Y', step: 'year', stepmode: 'backward' },
+            { step: 'all', label: 'All' }
+          ]
+        }
+      },
+      yaxis: {
+        title: 'Balance',
+        gridcolor: '#e5e7eb',
+        tickvals: tickVals,
+        ticktext: tickTexts
+      },
+      hovermode: 'closest',
+      showlegend: false,
+      margin: { t: 80, r: 40, b: 80, l: 100 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)'
+    };
+
+    const config = {
+      responsive: true,
+      displayModeBar: true,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+      displaylogo: false
+    };
+
+    Plotly.newPlot('balanceChart', [trace], layout, config);
+
+    const chartEl = document.getElementById('balanceChart');
+
+    // Track mouse position for tooltip
+    let lastMouseEvent = null;
+    chartEl.addEventListener('mousemove', (e) => { lastMouseEvent = e; });
+
+    // Custom hover behavior
+    chartEl.on('plotly_hover', function (data) {
+      const point = data.points[0];
+      const pointIndex = point.pointIndex;
+      const dayData = timelineData[pointIndex];
+
+      if (lastMouseEvent) {
+        showTooltip(lastMouseEvent, dayData, pointIndex);
+      }
+
+      chartEl.style.cursor = 'pointer';
+    });
+
+    chartEl.on('plotly_unhover', function () {
+      hideTooltip();
+      chartEl.style.cursor = '';
+    });
+
+    // Click event for points
+    chartEl.on('plotly_click', function (data) {
+      const pointIndex = data.points[0].pointIndex;
+      const dayData = timelineData[pointIndex];
+      hideTooltip();
+      showDayTransactions(dayData);
+    });
+
+    // Update stats when zooming
+    chartEl.on('plotly_relayout', function (eventData) {
+      let startDate = null, endDate = null;
+
+      if (eventData['xaxis.range[0]']) {
+        startDate = new Date(eventData['xaxis.range[0]']);
+      }
+      if (eventData['xaxis.range[1]']) {
+        endDate = new Date(eventData['xaxis.range[1]']);
+      }
+
+      // If range is reset, use full data
+      if (eventData['xaxis.autorange']) {
+        startDate = null;
+        endDate = null;
+      }
+
+      updateVisibleStats(startDate, endDate);
+    });
+
+    // Initial stats update
+    updateVisibleStats(null, null);
+  }
+
+  // Show transactions for a specific day
+  function showDayTransactions(dayData) {
+    const panel = document.getElementById('dayTransactionsPanel');
+    const title = document.getElementById('dayTransactionsTitle');
+    const tbody = document.getElementById('dayTransactionsBody');
+
+    title.textContent = `Transactions on ${dayData.date}`;
+
+    const grouped = {};
+    const individual = [];
+
+    // Group by merchant
+    dayData.transactions.forEach(txn => {
+      if (txn.merchant) {
+        if (!grouped[txn.merchant]) {
+          grouped[txn.merchant] = {
+            netAmount: 0,
+            txns: [],
+            hasIncome: false,
+            hasExpense: false,
+            categories: new Set()
+          };
+        }
+
+        const val = txn.type === 'income' ? txn.amount : -txn.amount;
+        grouped[txn.merchant].netAmount += val;
+        grouped[txn.merchant].txns.push(txn);
+
+        if (txn.type === 'income') grouped[txn.merchant].hasIncome = true;
+        else grouped[txn.merchant].hasExpense = true;
+
+        if (txn.category) grouped[txn.merchant].categories.add(txn.category);
+      } else {
+        individual.push(txn);
+      }
+    });
+
+    let html = '';
+
+    // Render Merchant Groups
+    Object.keys(grouped).sort().forEach(merchantName => {
+      const group = grouped[merchantName];
+      const groupId = 'group-' + Math.random().toString(36).substr(2, 9);
+      const isNetPositive = group.netAmount >= 0;
+      const amountClass = isNetPositive ? 'amount-credit' : 'amount-debit';
+
+      // Determine category display
+      let categoryDisplay = '-';
+      if (group.categories.size === 1) {
+        categoryDisplay = Array.from(group.categories)[0];
+      } else if (group.categories.size > 1) {
+        categoryDisplay = 'Multiple';
+      }
+
+      // Group Header Row
+      html += `
+        <tr class="group-header" onclick="toggleGroup('${groupId}', this)" style="cursor: pointer; background-color: var(--light-gray); font-weight: 500;">
+            <td class="desc-cell">
+                <span class="toggle-icon" style="display: inline-block; width: 1.5rem; transition: transform 0.2s;">▶</span>
+                ${merchantName} <span style="font-size: 0.75rem; color: var(--text-secondary);">(${group.txns.length})</span>
+            </td>
+            <td>${merchantName}</td>
+            <td>${categoryDisplay}</td>
+            <td class="amount-cell text-right">
+                <span class="amount ${amountClass}" style="font-weight: 700;">
+                    ${isNetPositive ? '+' : ''}${formatCurrency(Math.abs(group.netAmount))}
+                </span>
+            </td>
+            <td></td>
+        </tr>
+        `;
+
+      // Group Children Rows
+      group.txns.forEach(txn => {
+        html += `
+            <tr class="group-child ${groupId}" style="display:none; background-color: #f9fafb;">
+                <td class="desc-cell" style="padding-left: 2.5rem; color: var(--text-secondary);">
+                    ${(txn.description || '').substring(0, 60)}
+                </td>
+                <td>${txn.merchant}</td>
+                <td>${txn.category || '-'}</td>
+                <td class="amount-cell text-right">
+                    <span class="amount ${txn.type === 'income' ? 'amount-credit' : 'amount-debit'}" style="font-size: 0.9rem;">
+                         ${txn.type === 'income' ? '+' : '-'}${formatCurrency(txn.amount)}
+                    </span>
+                </td>
+                 <td>
+                  <a href="/transactions/${txn.id}" class="btn btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.7rem;">View</a>
+                </td>
+            </tr>
+            `;
+      });
+    });
+
+    // Render Individual Transactions
+    individual.forEach(txn => {
+      html += `
+        <tr class="${txn.type === 'income' ? 'income-row' : 'expense-row'}">
+          <td class="desc-cell">${(txn.description || '').substring(0, 60)}${(txn.description || '').length > 60 ? '...' : ''}</td>
+          <td>${txn.merchant || '<span style="color: var(--text-muted); font-style: italic;">No Merchant</span>'}</td>
+          <td>${txn.category || '-'}</td>
+          <td class="amount-cell text-right">
+            <span class="amount ${txn.type === 'income' ? 'amount-credit' : 'amount-debit'}">
+              ${txn.type === 'income' ? '+' : '-'}${formatCurrency(txn.amount)}
+            </span>
+          </td>
+          <td>
+            <a href="/transactions/${txn.id}" class="btn btn-sm btn-secondary">View</a>
+          </td>
+        </tr>
+      `;
+    });
+
+    if (Object.keys(grouped).length === 0 && individual.length === 0) {
+      html = '<tr><td colspan="5" class="text-center p-4">No transactions found</td></tr>';
+    }
+
+    tbody.innerHTML = html;
+
+    panel.classList.remove('hidden');
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function toggleGroup(groupId, headerElement) {
+    const rows = document.getElementsByClassName(groupId);
+    const icon = headerElement.querySelector('.toggle-icon');
+
+    let isExpanding = false;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].style.display === 'none') {
+        rows[i].style.display = 'table-row';
+        isExpanding = true;
+      } else {
+        rows[i].style.display = 'none';
+      }
+    }
+
+    if (icon) {
+      icon.style.transform = isExpanding ? 'rotate(90deg)' : 'rotate(0deg)';
+    }
+  }
+
+  function closeDayPanel() {
+    const panel = document.getElementById('dayTransactionsPanel');
+    panel.style.display = '';
+    panel.classList.add('hidden');
+  }
+
+  function resetDateRange() {
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    loadData();
+  }
+
+  // Close panel on Escape key
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeDayPanel();
+    }
+  });
+
+  // Initial load
+  loadData();
+</script>
+
+{% endblock %}

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-commit hook: blocks commits containing PII patterns.
+# Installed by setup.sh → runs scripts/check_pii.py on staged files.
+
+set -euo pipefail
+
+# Find Python (prefer venv, fall back to system)
+if [ -f ".venv/bin/python" ]; then
+    PYTHON=".venv/bin/python"
+elif command -v python3 &>/dev/null; then
+    PYTHON="python3"
+else
+    echo "Warning: Python not found, skipping PII check."
+    exit 0
+fi
+
+exec "$PYTHON" scripts/check_pii.py

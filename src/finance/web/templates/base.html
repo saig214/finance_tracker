@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Finance{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css" />
+  </head>
+  <body>
+    {% set current_path = request.url.path %}
+    <header class="navbar">
+      <div class="navbar-brand">
+        <h1>Finance Tracker</h1>
+      </div>
+      <nav class="navbar-nav">
+        <a href="/" class="nav-link {% if current_path == '/' %}active{% endif %}">Dashboard</a>
+        <a href="/balance" class="nav-link {% if '/balance' in current_path %}active{% endif %}">Balance</a>
+        <a href="/transactions" class="nav-link {% if '/transactions' in current_path %}active{% endif %}">Transactions</a>
+        <a href="/rules" class="nav-link {% if '/rules' in current_path %}active{% endif %}">Rules</a>
+        <a href="/suggestions" class="nav-link {% if '/suggestions' in current_path %}active{% endif %}">Suggestions</a>
+        <a href="/manage/merchants" class="nav-link {% if '/manage/merchants' in current_path %}active{% endif %}">Merchants</a>
+        <a href="/manage/categories" class="nav-link {% if '/manage/categories' in current_path %}active{% endif %}">Categories</a>
+      </nav>
+    </header>
+    <main class="container">
+      {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+    <script>
+      const notyf = new Notyf({
+        duration: 4000,
+        position: { x: 'right', y: 'bottom' },
+        dismissible: true,
+        ripple: false,
+        types: [
+          {
+            type: 'success',
+            background: '#16a34a',
+          },
+          {
+            type: 'error',
+            background: '#dc2626',
+          },
+          {
+            type: 'info',
+            background: '#2563eb',
+            icon: false,
+          }
+        ]
+      });
+    </script>
+  </body>
+</html>

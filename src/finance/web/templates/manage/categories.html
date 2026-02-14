@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Categories</h1>
+  <div class="summary-stats">
+    <div class="stat">
+      <span class="stat-label">Total</span>
+      <span class="stat-value">{{ categories|length }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Add New Category -->
+<div class="card mb-6">
+  <h2 class="card-title">Add New Category</h2>
+  <form method="post" class="category-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Category Name</label>
+        <input type="text" name="name" placeholder="e.g., Groceries, Entertainment" required class="form-input" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Parent Category</label>
+        <select name="parent_id" class="form-select">
+          <option value="">No parent (top-level)</option>
+          {% for cat in categories if not cat.parent_id %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group color-group">
+        <label class="form-label">Color</label>
+        <input type="color" name="color" value="#3b82f6" class="color-input" />
+      </div>
+      <div class="form-group btn-group">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Categories Grid -->
+<div class="categories-grid">
+  {% for parent in categories if not parent.parent_id %}
+  <div class="category-card">
+    <div class="category-header" style="border-left-color: {{ parent.color or '#6b7280' }};">
+      <div class="category-info">
+        <span class="category-color" style="background: {{ parent.color or '#6b7280' }};"></span>
+        <span class="category-title">{{ parent.name }}</span>
+      </div>
+      <a href="/transactions?category_id={{ parent.id }}" class="category-count">
+        {{ parent.transaction_count }} txns
+      </a>
+    </div>
+
+    {% set children = categories|selectattr('parent_id', 'equalto', parent.id)|list %}
+    {% if children %}
+    <div class="subcategories">
+      {% for child in children %}
+      <div class="subcategory-item">
+        <span class="subcategory-color" style="background: {{ child.color or parent.color or '#6b7280' }};"></span>
+        <span class="subcategory-name">{{ child.name }}</span>
+        <a href="/transactions?category_id={{ child.id }}" class="subcategory-count">
+          {{ child.transaction_count }}
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Uncategorized Stats -->
+<div class="card mt-6">
+  <div class="uncategorized-info">
+    <div>
+      <h3 style="margin: 0 0 0.25rem 0;">Uncategorized Transactions</h3>
+      <p class="form-help" style="margin: 0;">Transactions that need to be assigned a category</p>
+    </div>
+    <a href="/transactions?category_id=none" class="btn btn-secondary">View Uncategorized</a>
+  </div>
+</div>
+{% endblock %}

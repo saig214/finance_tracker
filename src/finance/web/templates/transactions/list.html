@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Transactions</h1>
+  <div class="summary-stats">
+    <div class="stat">
+      <span class="stat-label">Total</span>
+      <span class="stat-value">{{ total }}</span>
+    </div>
+  </div>
+</div>
+
+<form method="get" class="filters-bar">
+  <div class="filter-group">
+    <input type="text" name="q" placeholder="Search description..." value="{{ q or '' }}" class="search-input" />
+
+    <select name="category_id" class="filter-select">
+      <option value="">All categories</option>
+      {% for cat in categories %}
+      <option value="{{ cat.id }}" {% if category_id==cat.id %}selected{% endif %}>{{ cat.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="merchant_id" class="filter-select" id="merchantFilter" {% if no_merchant %}disabled{% endif %}>
+      <option value="">All merchants</option>
+      {% for m in merchants %}
+      <option value="{{ m.id }}" {% if merchant_id==m.id %}selected{% endif %}>{{ m.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="filter-checkbox">
+      <input type="checkbox" name="no_merchant" value="true" {% if no_merchant %}checked{% endif %}
+        id="noMerchantCheckbox" />
+      <span>No Merchant</span>
+    </label>
+
+    <select name="type" class="filter-select">
+      <option value="">All types</option>
+      <option value="expense" {% if type=='expense' %}selected{% endif %}>Expenses</option>
+      <option value="income" {% if type=='income' %}selected{% endif %}>Income</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary">Filter</button>
+    <a href="/transactions" class="btn btn-secondary">Clear</a>
+    {% if q %}
+    <a href="/rules/create?q={{ q }}" class="btn btn-success" title="Create a rule from these filters">
+      ⚡ Create Rule
+    </a>
+    {% endif %}
+  </div>
+</form>
+
+<script>
+  // Disable merchant dropdown when "No Merchant" is checked
+  document.getElementById('noMerchantCheckbox').addEventListener('change', function () {
+    document.getElementById('merchantFilter').disabled = this.checked;
+    if (this.checked) {
+      document.getElementById('merchantFilter').value = '';
+    }
+  });
+</script>
+
+
+<div class="table-container">
+  <table class="transactions-table">
+    <thead>
+      <tr>
+        <th>
+          <a href="?sort=date&order={{ 'asc' if sort == 'date' and order == 'desc' else 'desc' }}{% if q %}&q={{ q }}{% endif %}{% if category_id %}&category_id={{ category_id }}{% endif %}{% if merchant_id %}&merchant_id={{ merchant_id }}{% endif %}{% if type %}&type={{ type }}{% endif %}{% if no_merchant %}&no_merchant=true{% endif %}"
+            class="sort-header">
+            Date
+            {% if sort == 'date' %}
+            <span class="sort-icon">{{ '↑' if order == 'asc' else '↓' }}</span>
+            {% endif %}
+          </a>
+        </th>
+        <th>Type</th>
+        <th>Description</th>
+        <th class="text-right">
+          <a href="?sort=amount&order={{ 'asc' if sort == 'amount' and order == 'desc' else 'desc' }}{% if q %}&q={{ q }}{% endif %}{% if category_id %}&category_id={{ category_id }}{% endif %}{% if merchant_id %}&merchant_id={{ merchant_id }}{% endif %}{% if type %}&type={{ type }}{% endif %}{% if no_merchant %}&no_merchant=true{% endif %}"
+            class="sort-header">
+            Amount
+            {% if sort == 'amount' %}
+            <span class="sort-icon">{{ '↑' if order == 'asc' else '↓' }}</span>
+            {% endif %}
+          </a>
+        </th>
+        <th>Merchant</th>
+        <th>Category</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr
+        class="transaction-row {% if tx.transaction_type.value == 'income' %}income-row{% else %}expense-row{% endif %}">
+        <td class="date-cell">{{ tx.transaction_date.strftime('%d/%m/%Y') }}</td>
+
+        <td class="type-cell">
+          {% if tx.transaction_type.value == 'income' %}
+          <span class="badge badge-success">CR</span>
+          {% elif tx.transaction_type.value == 'payment' %}
+          <span class="badge badge-info">SETTLE</span>
+          {% else %}
+          <span class="badge badge-danger">DR</span>
+          {% endif %}
+          {% if tx.is_provisional %}
+          <span class="badge badge-warning" title="Auto-created from Splitwise (friend paid)">Provisional</span>
+          {% endif %}
+        </td>
+
+        <td class="desc-cell">
+          {% set parser_meta = (tx.metadata_json or {}).get('parser_metadata', {}) %}
+          {% set bank = parser_meta.get('bank') %}
+          {% set product = parser_meta.get('product') %}
+          {% set source_label = (bank|title ~ ' · ' ~ product.replace('_', ' ')|title) if bank and product else (tx.source_type.value if tx.source_type else 'Unknown') %}
+          <a href="/transactions/{{ tx.id }}" class="tx-link">
+            {{ tx.cleaned_description or tx.original_description }}
+          </a>
+          <div class="text-muted text-xs" title="Profile: {{ parser_meta.get('profile_id', 'n/a') }} | Extraction: {{ parser_meta.get('extraction_method', 'n/a') }} | Match: {{ '%.0f%%'|format((parser_meta.get('match_score', 0) * 100)) if parser_meta.get('match_score') is not none else 'n/a' }}">
+            {{ source_label }}
+          </div>
+        </td>
+
+        <td class="amount-cell text-right">
+          {% if tx.effective_amount is not none and tx.effective_amount != tx.amount %}
+          <span
+            class="amount {% if tx.transaction_type.value == 'income' %}amount-credit{% else %}amount-debit{% endif %}">
+            {{ '{:,.2f}'.format(tx.effective_amount) }}
+          </span>
+          <span class="currency">{{ tx.currency }}</span>
+          <div class="text-muted text-xs">Full: {{ '{:,.2f}'.format(tx.amount) }}</div>
+          {% else %}
+          <span
+            class="amount {% if tx.transaction_type.value == 'income' %}amount-credit{% else %}amount-debit{% endif %}">
+            {{ '{:,.2f}'.format(tx.amount) }}
+          </span>
+          <span class="currency">{{ tx.currency }}</span>
+          {% endif %}
+        </td>
+
+        <td class="merchant-cell">
+          {% if tx.merchant %}
+          <span class="merchant-name">{{ tx.merchant.name }}</span>
+          {% else %}
+          <span class="text-muted">-</span>
+          {% endif %}
+        </td>
+
+        <td class="category-cell">
+          {% if tx.category %}
+          <span class="category-badge"
+            style="background-color: {{ tx.category.color }}20; color: {{ tx.category.color }};">
+            {{ tx.category.name }}
+          </span>
+          {% else %}
+          <span class="badge badge-warning">Uncategorized</span>
+          {% endif %}
+        </td>
+
+        <td class="actions-cell">
+          <a href="/transactions/{{ tx.id }}/edit" class="btn-icon" title="Edit">✏️</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page - 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}{% if q %}&q={{ q }}{% endif %}{% if category_id %}&category_id={{ category_id }}{% endif %}{% if merchant_id %}&merchant_id={{ merchant_id }}{% endif %}{% if type %}&type={{ type }}{% endif %}{% if no_merchant %}&no_merchant=true{% endif %}"
+    class="btn btn-secondary">← Previous</a>
+  {% endif %}
+  <span class="page-info">Page {{ page }} of {{ (total + page_size - 1) // page_size }}</span>
+  {% if (page * page_size) < total %} <a
+    href="?page={{ page + 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}{% if q %}&q={{ q }}{% endif %}{% if category_id %}&category_id={{ category_id }}{% endif %}{% if merchant_id %}&merchant_id={{ merchant_id }}{% endif %}{% if type %}&type={{ type }}{% endif %}{% if no_merchant %}&no_merchant=true{% endif %}"
+    class="btn btn-secondary">Next →</a>
+    {% endif %}
+</div>
+{% endblock %}
